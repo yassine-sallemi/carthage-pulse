@@ -1,0 +1,16 @@
+# TODO
+
+- `reddit_stream`:
+  - Implement persistent state between `reddit_stream` runs:
+    - [ ] Store the last seen `post_id` and `comment_id` after each polling cycle.
+    - [ ] Load these values on startup.
+    - [ ] On new runs, poll only items newer than the stored IDs/timestamps to avoid reprocessing old data.
+
+- `reddit_enricher`:
+  - [] CTRL+C handling:
+    - [ ] Implement signal handling to gracefully shut down the `reddit_enrich` process when receiving a SIGINT (Ctrl+C).
+    - [ ] Ensure that any in-progress data processing is completed or safely terminated before exiting.
+
+- `reddit_analytics`:
+  - [ ] Implement data aggregation and analysis logic.
+  - [ ] Store the aggregated results in MongoDB.

@@ -1,0 +1,12 @@
+[project]
+name = "reddit-enricher"
+version = "0.1.0"
+description = "Reddit event enricher using LLM providers for text enrichment"
+requires-python = ">=3.13"
+dependencies = [
+    "kafka-python>=2.0.2",
+    "pyyaml>=6.0",
+    "openai>=1.0.0",
+    "requests>=2.33.1",
+    "pydantic>=2.0.0",
+]

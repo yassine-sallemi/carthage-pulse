@@ -1,0 +1,22 @@
+subreddits:
+  - Tunisia
+  - Tunisie
+
+# Stream Settings
+poll_interval: 30
+fetch_limit: 100
+initial_fetch: true # Perform initial fetch on startup
+
+# Reddit API
+user_agent: "FadhlounEl7anoun/1.0 (by /u/Familiar-System542)"
+
+# Which endpoints to poll
+endpoints:
+  - new
+  - comments
+
+# Kafka Settings
+kafka:
+  bootstrap_servers:
+    - localhost:9092
+  topic: reddit-events
