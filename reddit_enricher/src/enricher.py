@@ -1,38 +1,86 @@
-from typing import Optional
+import logging
+from typing import Optional, List
+from pydantic import ValidationError
 from .providers import LLMProvider
+from .models import RedditEvent, Enrichment
+
+logger = logging.getLogger(__name__)
 
 
 class TextEnricher:
     def __init__(self, provider: LLMProvider):
         self.provider = provider
 
-    def enrich_batch(self, events: list[dict]) -> list[dict]:
-        texts = [
-            f"{event.get('title', '')}\n\n{event.get('content', '')}".strip()
-            for event in events
-        ]
+    @staticmethod
+    def _extract_text(event: RedditEvent) -> str:
+        return f"{event.title or ''}\n\n{event.content or ''}".strip()
 
-        results = self.provider.enrich(texts)
+    def enrich_batch(self, events: List[RedditEvent]) -> List[RedditEvent]:
+        if not events:
+            return []
+        texts = [self._extract_text(event) for event in events]
 
-        if not results or not isinstance(results, list):
+        try:
+            results = self.provider.enrich(texts)
+        except Exception as e:
+            logger.warning(f"Provider error: {type(e).__name__}")
             return events
 
+        if not results or not isinstance(results, list):
+            logger.warning("Invalid provider response")
+            return events
+
+        if len(results) != len(events):
+            logger.warning(
+                f"Result count mismatch: got {len(results)}, expected {len(events)}"
+            )
+
         enriched = []
-        for event, result in zip(events, results):
-            if result:
-                enriched.append({**event, "enrichment": result})
-            else:
-                enriched.append({**event, "enrichment": None})
+        for idx, (event, result) in enumerate(zip(events, results)):
+            try:
+                if result and isinstance(result, dict):
+                    enrichment = Enrichment(**result)
+                    enriched.append(event.model_copy(update={"enrichment": enrichment}))
+                else:
+                    logger.debug(f"Event {event.event_id}: empty or null result")
+                    enriched.append(event.model_copy(update={"enrichment": None}))
+            except ValidationError as e:
+                logger.warning(
+                    f"Event {event.event_id}: validation error - {e.error_count()} issues"
+                )
+                logger.debug(f"Failed result: {result}")
+                enriched.append(event.model_copy(update={"enrichment": None}))
+            except Exception as e:
+                logger.warning(f"Event {event.event_id}: {type(e).__name__}")
+                enriched.append(event.model_copy(update={"enrichment": None}))
 
         return enriched
 
-    def enrich(self, event: dict) -> Optional[dict]:
-        text = f"{event.get('title', '')}\n\n{event.get('content', '')}".strip()
-
+    def enrich(self, event: RedditEvent) -> Optional[RedditEvent]:
+        text = self._extract_text(event)
         if not text:
-            return {**event, "enrichment": None}
+            return event.model_copy(update={"enrichment": None})
 
-        result = self.provider.enrich([text])
+        try:
+            result = self.provider.enrich([text])
+        except Exception as e:
+            logger.debug(f"Provider error: {type(e).__name__}")
+            return None
+
         if result and isinstance(result, list) and len(result) > 0:
-            return {**event, "enrichment": result[0]}
+            item = result[0]
+            if isinstance(item, dict):
+                try:
+                    enrichment = Enrichment(**item)
+                    return event.model_copy(update={"enrichment": enrichment})
+                except ValidationError as e:
+                    logger.debug(
+                        f"Event {event.event_id}: validation error - {e.error_count()} issues"
+                    )
+                    logger.debug(f"Response was: {item}")
+                    return event.model_copy(update={"enrichment": None})
+            else:
+                logger.debug(f"Event {event.event_id}: non-dict result")
+        else:
+            logger.debug(f"Event {event.event_id}: empty result")
         return None

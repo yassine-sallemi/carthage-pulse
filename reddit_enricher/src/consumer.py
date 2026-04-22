@@ -1,6 +1,10 @@
 import json
+import logging
 import signal
+from typing import List, Tuple
+from pydantic import ValidationError
 from kafka import KafkaConsumer, KafkaProducer
+from .models import RedditEvent
 from .config import (
     load_config,
     get_kafka_bootstrap_servers,
@@ -18,10 +22,13 @@ from .config import (
 from .providers import get_provider
 from .enricher import TextEnricher
 
+logger = logging.getLogger(__name__)
+
 
 class RedditEnricherConsumer:
     def __init__(self):
         self.config = load_config()
+        logger.info("Initializing Consumer")
         self.consumer = KafkaConsumer(
             get_kafka_input_topic(self.config),
             bootstrap_servers=get_kafka_bootstrap_servers(self.config),
@@ -39,6 +46,7 @@ class RedditEnricherConsumer:
         self.dlq_topic = get_kafka_dlq_topic(self.config)
         self.batch_size = get_batch_size(self.config)
         self.max_retries = get_max_retries(self.config)
+
         self.enricher = TextEnricher(
             provider=get_provider(
                 get_llm_provider(self.config),
@@ -47,71 +55,146 @@ class RedditEnricherConsumer:
                 get_prompt(self.config),
             )
         )
-        self.batch = []
+        logger.info(
+            f"Consumer ready - batch_size: {self.batch_size}, retries: {self.max_retries}"
+        )
+
+        self.batch: List[RedditEvent] = []
         self.running = True
 
-    def process_batch(self, batch):
-        failed = []
-        success = False
+    def _process_event_with_retries(self, event: RedditEvent) -> RedditEvent:
         for attempt in range(self.max_retries):
-            enriched_events = self.enricher.enrich_batch(batch)
-            if enriched_events:
-                success = True
-                for event in enriched_events:
-                    if event.get("enrichment"):
-                        self.producer.send(self.output_topic, event)
-                        print(f"Enriched: {event.get('event_id')}")
-                    else:
-                        failed.append(event)
-                break
+            try:
+                enriched = self.enricher.enrich(event)
+                if enriched and enriched.enrichment:
+                    logger.debug(
+                        f"🎉 {event.event_id}: enriched (attempt {attempt + 1})"
+                    )
+                    return enriched
+                elif enriched:
+                    logger.debug(
+                        f"⏭️  {event.event_id}: no enrichment (attempt {attempt + 1})"
+                    )
+                    if attempt < self.max_retries - 1:
+                        continue
+                    return enriched
+                else:
+                    logger.debug(
+                        f"🔄 {event.event_id}: retry {attempt + 1}/{self.max_retries}"
+                    )
+            except Exception as e:
+                logger.debug(f"⚠️  {event.event_id}: error on attempt {attempt + 1}")
+                if attempt == self.max_retries - 1:
+                    break
+
+        logger.warning(f"❌ {event.event_id}: enrichment failed (max retries)")
+        return event.model_copy(update={"enrichment": None})
+
+    def process_batch(
+        self, batch: List[RedditEvent]
+    ) -> Tuple[List[RedditEvent], List[RedditEvent]]:
+        successful = []
+        failed = []
+        logger.info(f"Processing batch: {len(batch)} events")
+
+        for event in batch:
+            enriched = self._process_event_with_retries(event)
+            if enriched.enrichment:
+                successful.append(enriched)
             else:
-                print(f"Retry {attempt + 1}/{self.max_retries} for batch")
-                failed.extend(batch)
+                failed.append(enriched)
 
-        if not success:
-            failed.extend(batch)
-
-        self.producer.flush()
-        return failed
+        return successful, failed
 
     def shutdown(self, signum, frame):
-        print("Shutting down...")
+        logger.info("Shutdown signal received")
         self.running = False
         if self.batch:
-            failed = self.process_batch(self.batch)
+            logger.info(f"Processing {len(self.batch)} remaining events")
+            successful, failed = self.process_batch(self.batch)
+
+            for event in successful:
+                self.producer.send(
+                    self.output_topic, json.loads(event.model_dump_json())
+                )
+            logger.info(f"Sent {len(successful)} to output")
+
             for event in failed:
-                self.producer.send(self.dlq_topic, event)
-                print(f"Sent to DLQ: {event.get('event_id')}")
+                self.producer.send(self.dlq_topic, json.loads(event.model_dump_json()))
+            logger.info(f"Sent {len(failed)} to DLQ")
+
             self.producer.flush()
         self.close()
 
     def run(self):
         signal.signal(signal.SIGINT, self.shutdown)
         signal.signal(signal.SIGTERM, self.shutdown)
-        print(f"Listening to {get_kafka_input_topic(self.config)}...")
-        for message in self.consumer:
-            if not self.running:
-                break
-            if not message.value.get("event_id"):
-                continue
-            self.batch.append(message.value)
-            print(f"Received: {message.value.get('event_id')}")
+        logger.info(f"Listening on: {get_kafka_input_topic(self.config)}")
 
-            if len(self.batch) >= self.batch_size:
-                failed = self.process_batch(self.batch)
+        try:
+            for message in self.consumer:
+                if not self.running:
+                    break
+                if not message.value.get("event_id"):
+
+                    continue
+
+                try:
+                    event = RedditEvent(**message.value)
+                    self.batch.append(event)
+                    logger.debug(
+                        f"Buffered event {event.event_id} ({len(self.batch)}/{self.batch_size})"
+                    )
+                except ValidationError as e:
+                    logger.error(f"Invalid event format: {e}")
+                    continue
+
+                if len(self.batch) >= self.batch_size:
+                    successful, failed = self.process_batch(self.batch)
+
+                    for event in successful:
+                        self.producer.send(
+                            self.output_topic, json.loads(event.model_dump_json())
+                        )
+
+                    for event in failed:
+                        self.producer.send(
+                            self.dlq_topic, json.loads(event.model_dump_json())
+                        )
+
+                    self.producer.flush()
+                    logger.info(
+                        f"Batch processed: {len(successful)} success, {len(failed)} failed"
+                    )
+                    self.batch = []
+
+            # Process remaining events
+            if self.batch and self.running:
+                logger.info(f"Processing final batch of {len(self.batch)} events")
+                successful, failed = self.process_batch(self.batch)
+
+                for event in successful:
+                    self.producer.send(
+                        self.output_topic, json.loads(event.model_dump_json())
+                    )
+
                 for event in failed:
-                    self.producer.send(self.dlq_topic, event)
-                    print(f"Sent to DLQ: {event.get('event_id')}")
-                self.batch = []
+                    self.producer.send(
+                        self.dlq_topic, json.loads(event.model_dump_json())
+                    )
 
-        if self.batch and self.running:
-            failed = self.process_batch(self.batch)
-            for event in failed:
-                self.producer.send(self.dlq_topic, event)
-                print(f"Sent to DLQ: {event.get('event_id')}")
-            self.batch = []
+                self.producer.flush()
+                logger.info(
+                    f"Final batch: {len(successful)} success, {len(failed)} failed"
+                )
+                self.batch = []
+        except Exception as e:
+            logger.exception(f"Unexpected error in consumer loop: {e}")
+            raise
 
     def close(self):
+        logger.info("Closing consumer and producer")
         self.consumer.close()
         self.producer.flush()
         self.producer.close()
+        logger.info("Consumer shutdown complete")

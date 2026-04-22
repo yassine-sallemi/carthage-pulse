@@ -17,48 +17,17 @@ kafka:
 batch_size: 5
 max_retries: 3
 
-# Enrichment Prompt
+# Enrichment Prompt (DO NOT CHANGE THE INSTRUCTIONS OR EXPECTED OUTPUT SCHEMA)
 prompt: |
-  Role: You are an expert NLP Data Scientist specializing in the Tunisian dialect and social media analysis.
+  You are an expert NLP analyst specializing in Tunisian social media content.
 
-  Task: Your job is to analyze text from Tunisian Reddit communities. The text may contain a complex mix of French, English, Modern Standard Arabic, Tunisian Darija (in Arabic script), and Arabizi (Tunisian Darija in Latin script using numbers like 3, 7, 9).
+  Analyze each text and return ONLY a JSON array with one object per item.
+  Each object must have these EXACT fields:
+  - languages: array of detected language codes only from [en, fr, ar, darija_ar, darija_lat]
+  - translation: Full English translation/normalized version
+  - sentiment_score: float from -1.0 (very negative) to 1.0 (very positive)
+  - intent: one of [question, complaint, discussion, support_request, meme_joke, news_sharing, story_time]
+  - topics: array of 2-4 main topics (e.g., "telecommunications", "politics", "football")
+  - entities: array of {name, type} where type is Person, Organization, or Location only
 
-  CRITICAL: For each input item, you MUST return ONE JSON object with EXACTLY these 6 fields: languages, translated_english, sentiment_score, intent, topics, entities. Never skip any field.
-
-  Instructions:
-
-  1. Translate & Normalize: Combine the title and content. Translate any French, Arabic, Darija, or Arabizi into clear, natural English.
-
-  2. Determine Sentiment: Score the overall sentiment from -1.0 (extremely negative/angry) to 1.0 (extremely positive/happy). Neutral is 0.0. If sentiment is mixed, weight by the dominant emotional tone.
-
-  3. Identify Intent: Classify the primary reason the user posted this. Choose exactly ONE from this list: [question, complaint, discussion, support_request, meme_joke, news_sharing, story_time].
-
-  4. Extract Topics: Provide 2 to 4 high-level categories that describe the post (e.g., "telecommunications", "politics", "football", "dating", "travel").
-
-  5. Extract Entities: Identify specific, real-world entities mentioned in the text. Categorize each as exactly one of: [Person, Organization, Location]. Do not extract generic nouns like "internet" or "car". Only extract proper nouns (e.g., "Ooredoo", "Sfax", "Kais Saied"). If none exist, return an empty array.
-
-  Output Constraints:
-  - You must respond with ONLY a raw, valid JSON array containing one object per item, in the same order as the input.
-  - Do not include markdown formatting like ```json, conversational text, or explanations.
-  - Your output must strictly match the schema below.
-
-  Expected output schema (array of N objects, one per input item):
-  [
-    {
-      "languages": ["en", "darija_lat"],
-      "translated_english": "The full English translation here",
-      "sentiment_score": 0.0,
-      "intent": "selected_intent_string",
-      "topics": ["topic1", "topic2"],
-      "entities": [
-        {"name": "EntityName", "type": "Person|Organization|Location"}
-      ]
-    }
-  ]
-
-  Languages field rules — use ONLY these exact codes, and only include codes actually present in the text:
-  - "en"         → English
-  - "fr"         → French
-  - "ar"         → Modern Standard Arabic (فصحى)
-  - "darija_ar"  → Tunisian Dialect in Arabic script
-  - "darija_lat" → Tunisian Dialect in Latin script with numbers (Arabizi, e.g. 3, 7, 9)
+  Return ONLY valid JSON array, no markdown or explanations.
