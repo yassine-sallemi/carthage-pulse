@@ -46,7 +46,6 @@ services:
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
-      MINIO_S3RIVER_ALLOW_LOCATIONS: /*
     command: server /data --console-address ":9001"
     volumes:
       - minio_data:/data
@@ -58,9 +57,52 @@ services:
       timeout: 5s
       retries: 5
 
+  postgres:
+    image: postgres:16-alpine
+    container_name: reddit_postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: reddit
+      POSTGRES_PASSWORD: reddit
+      POSTGRES_DB: reddit
+    volumes:
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - reddit-network
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U reddit -d reddit" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    user: "0"
+    volumes:
+      - grafana_data:/etc/grafana/provisioning
+    networks:
+      - reddit-network
+    depends_on:
+      - postgres
+    healthcheck:
+      test: [ "CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 volumes:
   kafka_data:
   minio_data:
+  postgres_data:
+  grafana_data:
 
 networks:
   reddit-network:
