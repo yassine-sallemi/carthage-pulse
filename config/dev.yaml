@@ -1,21 +1,39 @@
+# Reddit LLM Pipeline Configuration
+# INGESTION SERVICE
+ingestion:
+  subreddits:
+    - Tunisia
+    - Tunisie
+  poll_interval: 30
+  fetch_limit: 100
+  initial_fetch: true
+  user_agent: "FadhlounEl7anoun/1.0 (by /u/Familiar-System542)"
+  endpoints:
+    - new
+    - comments
+
+# PROCESSING SERVICE
+processing:
+  batch_size: 5
+  max_retries: 3
+
 # LLM Provider - options: ollama, openai, openrouter, anthropic
 llm:
   provider: openrouter
-  model: meta-llama/llama-3.3-70b-instruct:free
-  api_key: your-api-key-here
+  model: meta-llama/llama-3.3-70b-instruct
+  api_key: ${OPENROUTER_API_KEY} # Reads from .env or environment
 
-# Kafka Settings
+  # Kafka Settings
 kafka:
   bootstrap_servers:
     - localhost:9092
-  group_id: reddit-enricher-group
-  input_topic: reddit-events
-  output_topic: reddit-events-enriched
-  dlq_topic: reddit-events-dlq
-
-# Processing Settings
-batch_size: 5
-max_retries: 3
+  # Ingestion output topic
+  ingestion_topic: reddit-events
+  # Processing input/output topics
+  processing_input_topic: reddit-events
+  processing_output_topic: reddit-events-enriched
+  processing_dlq_topic: reddit-events-dlq
+  processing_group_id: reddit-enricher-group
 
 # Enrichment Prompt (DO NOT CHANGE THE INSTRUCTIONS OR EXPECTED OUTPUT SCHEMA)
 prompt: |

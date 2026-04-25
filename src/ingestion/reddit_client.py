@@ -1,3 +1,5 @@
+"""Reddit API client for fetching posts and comments"""
+
 import logging
 import requests
 from typing import Optional, List
@@ -11,12 +13,14 @@ from .config import (
     build_subreddit_url,
     get_initial_fetch,
 )
-from .models import RedditEvent
+from src.shared_utils import RedditEvent
 
 logger = logging.getLogger(__name__)
 
 
-class RedditStreamer:
+class RedditClient:
+    """Fetches Reddit posts and comments from specified subreddits"""
+
     def __init__(
         self,
         user_agent: Optional[str] = None,
@@ -35,10 +39,11 @@ class RedditStreamer:
         self.do_initial_fetch = get_initial_fetch(config)
         self.last_seen = {"new": None, "comments": None}
         logger.info(
-            f"Streamer initialized: r/{'+'.join(self.subreddits)} ({', '.join(self.endpoints)})"
+            f"Client initialized: r/{'+'.join(self.subreddits)} ({', '.join(self.endpoints)})"
         )
 
     def fetch(self, endpoint: str = "new") -> List[RedditEvent]:
+        """Fetch new posts/comments from Reddit API"""
         url = f"{self.api_url}/{endpoint}.json"
         params = {"limit": self.fetch_limit}
         headers = {"User-Agent": self.user_agent}
@@ -93,6 +98,7 @@ class RedditStreamer:
             return []
 
     def initial_fetch(self) -> List[RedditEvent]:
+        """Perform initial fetch from all endpoints"""
         events = []
         for endpoint in self.endpoints:
             events.extend(self.fetch(endpoint))
@@ -100,4 +106,5 @@ class RedditStreamer:
         return events
 
     def poll(self) -> List[RedditEvent]:
+        """Poll for new events"""
         return self.initial_fetch()

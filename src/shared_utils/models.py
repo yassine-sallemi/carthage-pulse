@@ -1,9 +1,42 @@
+"""Unified data models for Reddit LLM Pipeline"""
+
 from pydantic import BaseModel, Field
 from typing import Optional, List, Literal
 from datetime import datetime
+from enum import Enum
+
+
+class Language(str, Enum):
+    """Supported languages for text enrichment"""
+
+    ENGLISH = "en"
+    FRENCH = "fr"
+    ARABIC = "ar"
+    DARIJA_ARABIC = "darija_ar"
+    DARIJA_LATIN = "darija_lat"
+
+
+class Entity(BaseModel):
+    """Named entity extracted from text"""
+
+    name: str
+    type: str
+
+
+class Enrichment(BaseModel):
+    """LLM enrichment results"""
+
+    languages: Optional[List[Language]] = None
+    translation: Optional[str] = None
+    sentiment_score: Optional[float] = None
+    intent: Optional[str] = None
+    topics: Optional[List[str]] = None
+    entities: Optional[List[Entity]] = None
 
 
 class RedditEvent(BaseModel):
+    """Unified Reddit event model (post or comment)"""
+
     event_id: str
     event_type: Literal["POST", "COMMENT"]
     posted_in_subreddit: str
@@ -26,8 +59,12 @@ class RedditEvent(BaseModel):
     is_crosspost: bool = False
     original_subreddit: Optional[str] = None
 
+    # Enrichment (added by processing service)
+    enrichment: Optional[Enrichment] = None
+
     @staticmethod
     def _extract_media(data: dict, event_type: str) -> List[str]:
+        """Extract media URLs from Reddit API response"""
         media_urls = []
         if event_type == "POST":
             if data.get("is_video"):
@@ -65,6 +102,7 @@ class RedditEvent(BaseModel):
     def from_reddit_api(
         cls, item: dict, event_type: Literal["POST", "COMMENT"]
     ) -> "RedditEvent":
+        """Convert Reddit API response to RedditEvent"""
         data = item.get("data", item)
         media_urls = cls._extract_media(data, event_type)
         timestamp = datetime.fromtimestamp(data.get("created_utc", 0))

@@ -1,15 +1,19 @@
+"""LLM-based text enrichment service"""
+
 import json
 import logging
 import os
 import re
-from typing import Optional
+from typing import Optional, List
 from openai import OpenAI
+from src.shared_utils import RedditEvent, Enrichment
 
 logger = logging.getLogger(__name__)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
 
 def parse_json_response(content: str, num_items: int) -> list:
+    """Parse JSON array from LLM response with fallback strategies"""
     if not content:
         return [None] * num_items
 
@@ -44,6 +48,8 @@ def parse_json_response(content: str, num_items: int) -> list:
 
 
 class LLMProvider:
+    """Base class for LLM providers"""
+
     def __init__(self, api_key: str, model: str = "gpt-4o-mini", prompt: str = ""):
         self.api_key = api_key
         self.model = model
@@ -54,7 +60,7 @@ class LLMProvider:
 
 
 class OpenAIProvider(LLMProvider):
-    """OpenAI API provider for enrichment."""
+    """OpenAI API provider for enrichment"""
 
     def __init__(self, api_key: str, model: str = "gpt-4o-mini", prompt: str = ""):
         super().__init__(api_key, model, prompt)
@@ -96,7 +102,7 @@ class OpenAIProvider(LLMProvider):
 
 
 class OpenRouterProvider(LLMProvider):
-    """OpenRouter API provider for enrichment."""
+    """OpenRouter API provider for enrichment"""
 
     def __init__(
         self,
@@ -158,20 +164,7 @@ def get_provider(
     model: str = "gpt-4o-mini",
     prompt: str = "",
 ) -> LLMProvider:
-    """Factory function to create LLM provider instances.
-
-    Args:
-        provider: Provider name ('openai' or 'openrouter')
-        api_key: API key (uses env var if not provided)
-        model: Model name to use
-        prompt: System prompt for enrichment
-
-    Returns:
-        LLMProvider instance
-
-    Raises:
-        ValueError: If provider is unknown
-    """
+    """Factory function to create LLM provider instances"""
     logger.debug(f"Initializing provider: {provider}")
 
     if provider == "openai":
@@ -183,3 +176,78 @@ def get_provider(
 
     logger.error(f"Unknown provider: {provider}")
     raise ValueError(f"Unknown provider: {provider}")
+
+
+class LLMService:
+    """Service for enriching text using LLM providers"""
+
+    def __init__(self, provider: LLMProvider):
+        self.provider = provider
+
+    @staticmethod
+    def _extract_text(event: RedditEvent) -> str:
+        """Extract text content from Reddit event"""
+        return f"{event.title or ''}\n\n{event.content or ''}".strip()
+
+    def enrich_batch(self, events: List[RedditEvent]) -> List[RedditEvent]:
+        """Enrich a batch of events"""
+        if not events:
+            return []
+        texts = [self._extract_text(event) for event in events]
+
+        try:
+            results = self.provider.enrich(texts)
+        except Exception as e:
+            logger.warning(f"Provider error: {type(e).__name__}")
+            return events
+
+        if not results or not isinstance(results, list):
+            logger.warning("Invalid provider response")
+            return events
+
+        if len(results) != len(events):
+            logger.warning(
+                f"Result count mismatch: got {len(results)}, expected {len(events)}"
+            )
+
+        enriched = []
+        for idx, (event, result) in enumerate(zip(events, results)):
+            try:
+                if result and isinstance(result, dict):
+                    enrichment = Enrichment(**result)
+                    enriched.append(event.model_copy(update={"enrichment": enrichment}))
+                else:
+                    logger.debug(f"Event {event.event_id}: empty or null result")
+                    enriched.append(event.model_copy(update={"enrichment": None}))
+            except Exception as e:
+                logger.warning(f"Event {event.event_id}: {type(e).__name__}")
+                enriched.append(event.model_copy(update={"enrichment": None}))
+
+        return enriched
+
+    def enrich(self, event: RedditEvent) -> Optional[RedditEvent]:
+        """Enrich a single event"""
+        text = self._extract_text(event)
+        if not text:
+            return event.model_copy(update={"enrichment": None})
+
+        try:
+            result = self.provider.enrich([text])
+        except Exception as e:
+            logger.debug(f"Provider error: {type(e).__name__}")
+            return None
+
+        if result and isinstance(result, list) and len(result) > 0:
+            item = result[0]
+            if isinstance(item, dict):
+                try:
+                    enrichment = Enrichment(**item)
+                    return event.model_copy(update={"enrichment": enrichment})
+                except Exception as e:
+                    logger.debug(f"Event {event.event_id}: validation error")
+                    return event.model_copy(update={"enrichment": None})
+            else:
+                logger.debug(f"Event {event.event_id}: invalid result format")
+                return event.model_copy(update={"enrichment": None})
+
+        return event.model_copy(update={"enrichment": None})

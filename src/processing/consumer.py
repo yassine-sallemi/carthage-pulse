@@ -1,10 +1,11 @@
+"""Kafka consumer for processing Reddit events with LLM enrichment"""
+
 import json
 import logging
 import signal
 from typing import List, Tuple
 from pydantic import ValidationError
 from kafka import KafkaConsumer, KafkaProducer
-from .models import RedditEvent
 from .config import (
     load_config,
     get_kafka_bootstrap_servers,
@@ -19,13 +20,15 @@ from .config import (
     get_batch_size,
     get_max_retries,
 )
-from .providers import get_provider
-from .enricher import TextEnricher
+from .llm_service import LLMService, get_provider
+from src.shared_utils import RedditEvent
 
 logger = logging.getLogger(__name__)
 
 
-class RedditEnricherConsumer:
+class Consumer:
+    """Kafka consumer that enriches Reddit events with LLM"""
+
     def __init__(self):
         self.config = load_config()
         logger.info("Initializing Consumer")
@@ -47,7 +50,7 @@ class RedditEnricherConsumer:
         self.batch_size = get_batch_size(self.config)
         self.max_retries = get_max_retries(self.config)
 
-        self.enricher = TextEnricher(
+        self.llm_service = LLMService(
             provider=get_provider(
                 get_llm_provider(self.config),
                 get_llm_api_key(self.config),
@@ -63,9 +66,10 @@ class RedditEnricherConsumer:
         self.running = True
 
     def _process_event_with_retries(self, event: RedditEvent) -> RedditEvent:
+        """Process single event with retry logic"""
         for attempt in range(self.max_retries):
             try:
-                enriched = self.enricher.enrich(event)
+                enriched = self.llm_service.enrich(event)
                 if enriched and enriched.enrichment:
                     logger.debug(
                         f"🎉 {event.event_id}: enriched (attempt {attempt + 1})"
@@ -93,6 +97,7 @@ class RedditEnricherConsumer:
     def process_batch(
         self, batch: List[RedditEvent]
     ) -> Tuple[List[RedditEvent], List[RedditEvent]]:
+        """Process batch and split into successful and failed"""
         successful = []
         failed = []
         logger.info(f"Processing batch: {len(batch)} events")
@@ -107,6 +112,7 @@ class RedditEnricherConsumer:
         return successful, failed
 
     def shutdown(self, signum, frame):
+        """Handle shutdown signal"""
         logger.info("Shutdown signal received")
         self.running = False
         if self.batch:
@@ -127,6 +133,7 @@ class RedditEnricherConsumer:
         self.close()
 
     def run(self):
+        """Main consumer loop"""
         signal.signal(signal.SIGINT, self.shutdown)
         signal.signal(signal.SIGTERM, self.shutdown)
         logger.info(f"Listening on: {get_kafka_input_topic(self.config)}")
@@ -136,7 +143,6 @@ class RedditEnricherConsumer:
                 if not self.running:
                     break
                 if not message.value.get("event_id"):
-
                     continue
 
                 try:
@@ -193,6 +199,7 @@ class RedditEnricherConsumer:
             raise
 
     def close(self):
+        """Close consumer and producer"""
         logger.info("Closing consumer and producer")
         self.consumer.close()
         self.producer.flush()

@@ -1,3 +1,5 @@
+"""Standardized logging with colored output and emojis"""
+
 import logging
 import sys
 
