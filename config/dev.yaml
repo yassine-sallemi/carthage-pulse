@@ -22,7 +22,6 @@ llm:
   provider: openrouter
   model: meta-llama/llama-3.3-70b-instruct
   api_key: ${OPENROUTER_API_KEY} # Reads from .env or environment
-
   # Kafka Settings
 kafka:
   bootstrap_servers:
@@ -34,6 +33,21 @@ kafka:
   processing_output_topic: reddit-events-enriched
   processing_dlq_topic: reddit-events-dlq
   processing_group_id: reddit-enricher-group
+  # Storage input topic
+  storage_input_topic: reddit-events-enriched
+  storage_group_id: reddit-storage-group
+
+# MinIO / S3 Storage
+minio:
+  endpoint: localhost:9000
+  access_key: minioadmin
+  secret_key: minioadmin
+  bucket: reddit-data
+  secure: false
+
+# STORAGE SERVICE
+storage:
+  batch_size: 10
 
 # Enrichment Prompt (DO NOT CHANGE THE INSTRUCTIONS OR EXPECTED OUTPUT SCHEMA)
 prompt: |
