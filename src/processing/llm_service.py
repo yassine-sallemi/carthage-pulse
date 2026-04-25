@@ -1,50 +1,20 @@
 """LLM-based text enrichment service"""
 
-import json
 import logging
 import os
-import re
 from typing import Optional, List
 from openai import OpenAI
+from pydantic import BaseModel
 from src.shared_utils import RedditEvent, Enrichment
 
 logger = logging.getLogger(__name__)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
 
-def parse_json_response(content: str, num_items: int) -> list:
-    """Parse JSON array from LLM response with fallback strategies"""
-    if not content:
-        return [None] * num_items
+class BatchEnrichmentResponse(BaseModel):
+    """Wrapper for batch LLM response"""
 
-    content = content.strip()
-
-    try:
-        result = json.loads(content)
-        if isinstance(result, list):
-            logger.debug(f"Parsed {len(result)} items from LLM")
-            return result
-        elif isinstance(result, dict):
-            return [result]
-    except json.JSONDecodeError as e:
-        logger.debug(f"JSON parsing failed at line {e.lineno}: {e.msg}")
-
-    try:
-        matches = re.findall(r"\{[^{}]*\}", content)
-        results = []
-        for m in matches:
-            try:
-                results.append(json.loads(m))
-            except json.JSONDecodeError:
-                continue
-        if results:
-            logger.debug(f"Recovered {len(results)} items via regex")
-            return results[:num_items]
-    except Exception as e:
-        logger.debug(f"Regex recovery failed: {type(e).__name__}")
-
-    logger.warning(f"Failed to parse LLM response, returning {num_items} None values")
-    return [None] * num_items
+    items: List[Enrichment]
 
 
 class LLMProvider:
@@ -74,8 +44,7 @@ class OpenAIProvider(LLMProvider):
             [f"Item {i}:\n{text}" for i, text in enumerate(texts, 1)]
         )
         system_prompt = (
-            self.prompt
-            or "Extract sentiment, entities, and topics from each text. Return JSON array."
+            self.prompt or "Extract sentiment, entities, and topics from each text."
         )
         logger.debug(f"Processing {len(texts)} items with {self.model}")
 
@@ -89,16 +58,23 @@ class OpenAIProvider(LLMProvider):
                         "content": f"Process these {len(texts)} items:\n\n" + combined,
                     },
                 ],
+                response_format={
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "batch_enrichment_response",
+                        "schema": BatchEnrichmentResponse.model_json_schema(),
+                    },
+                },
                 max_tokens=4000,
                 timeout=60,
             )
             content = response.choices[0].message.content
             if not content:
-                logger.warning("OpenRouter returned empty content")
+                logger.warning("OpenAI returned empty content")
                 return [None] * len(texts)
-            result = parse_json_response(content, len(texts))
-            logger.debug(f"Processed {len(texts)} items")
-            return result
+            parsed = BatchEnrichmentResponse.model_validate_json(content)
+            logger.debug(f"Processed {len(parsed.items)} items")
+            return [item.model_dump() for item in parsed.items]
         except Exception as e:
             logger.warning(f"API error: {type(e).__name__}")
             return [None] * len(texts)
@@ -142,6 +118,13 @@ class OpenRouterProvider(LLMProvider):
                         "content": f"Process these {len(texts)} items:\n\n" + combined,
                     },
                 ],
+                response_format={
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "batch_enrichment_response",
+                        "schema": BatchEnrichmentResponse.model_json_schema(),
+                    },
+                },
                 max_tokens=4000,
                 timeout=60,
             )
@@ -150,14 +133,13 @@ class OpenRouterProvider(LLMProvider):
                 logger.warning("OpenRouter returned empty content")
                 return [None] * len(texts)
 
-            result = parse_json_response(content, len(texts))
-            logger.debug(f"OpenRouter: successfully processed {len(texts)} items")
-            return result
-        except json.JSONDecodeError as e:
-            logger.error(f"OpenRouter JSON decode error: {e}")
-            return [None] * len(texts)
+            parsed = BatchEnrichmentResponse.model_validate_json(content)
+            logger.debug(
+                f"OpenRouter: successfully processed {len(parsed.items)} items"
+            )
+            return [item.model_dump() for item in parsed.items]
         except Exception as e:
-            logger.error(f"OpenRouter error: {e}")
+            logger.error(f"OpenRouter error: {type(e).__name__}")
             return [None] * len(texts)
 
 

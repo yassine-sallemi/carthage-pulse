@@ -98,12 +98,20 @@ class Consumer:
         self, batch: List[RedditEvent]
     ) -> Tuple[List[RedditEvent], List[RedditEvent]]:
         """Process batch and split into successful and failed"""
-        successful = []
-        failed = []
         logger.info(f"Processing batch: {len(batch)} events")
 
-        for event in batch:
-            enriched = self._process_event_with_retries(event)
+        try:
+            enriched_batch = self.llm_service.enrich_batch(batch)
+        except Exception as e:
+            logger.warning(f"Batch enrichment failed: {type(e).__name__}, falling back to individual processing")
+            enriched_batch = []
+            for event in batch:
+                enriched = self._process_event_with_retries(event)
+                enriched_batch.append(enriched)
+
+        successful = []
+        failed = []
+        for enriched in enriched_batch:
             if enriched.enrichment:
                 successful.append(enriched)
             else:
