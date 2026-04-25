@@ -11,17 +11,17 @@ from minio import Minio
 from minio.error import S3Error
 import pyarrow as pa
 import pyarrow.parquet as pq
-from .config import (
+from src.shared_utils.config import (
     load_config,
     get_kafka_bootstrap_servers,
-    get_kafka_group_id,
-    get_kafka_input_topic,
+    get_kafka_storage_group_id,
+    get_kafka_storage_input_topic,
     get_minio_endpoint,
     get_minio_access_key,
     get_minio_secret_key,
     get_minio_bucket,
     get_minio_secure,
-    get_batch_size,
+    get_storage_batch_size,
 )
 from src.shared_utils import RedditEvent
 
@@ -35,9 +35,9 @@ class StorageConsumer:
         self.config = load_config()
         logger.info("Initializing StorageConsumer")
         self.consumer = KafkaConsumer(
-            get_kafka_input_topic(self.config),
+            get_kafka_storage_input_topic(self.config),
             bootstrap_servers=get_kafka_bootstrap_servers(self.config),
-            group_id=get_kafka_group_id(self.config),
+            group_id=get_kafka_storage_group_id(self.config),
             value_deserializer=lambda m: json.loads(m.decode("utf-8")),
             auto_offset_reset="earliest",
             enable_auto_commit=True,
@@ -50,7 +50,7 @@ class StorageConsumer:
             secure=get_minio_secure(self.config),
         )
         self.bucket = get_minio_bucket(self.config)
-        self.batch_size = get_batch_size(self.config)
+        self.batch_size = get_storage_batch_size(self.config)
         self._ensure_bucket()
         logger.info(
             f"StorageConsumer ready - endpoint: {get_minio_endpoint(self.config)}, bucket: {self.bucket}"
@@ -115,15 +115,23 @@ class StorageConsumer:
         }
         if event.enrichment:
             e = event.enrichment
-            d.update({
-                "enrichment_languages": [l.value for l in e.languages] if e.languages else [],
-                "enrichment_translation": e.translation,
-                "enrichment_sentiment": e.sentiment_score,
-                "enrichment_intent": e.intent,
-                "enrichment_topics": e.topics or [],
-                "enrichment_entity_names": [ent.name for ent in e.entities] if e.entities else [],
-                "enrichment_entity_types": [ent.type for ent in e.entities] if e.entities else [],
-            })
+            d.update(
+                {
+                    "enrichment_languages": (
+                        [l.value for l in e.languages] if e.languages else []
+                    ),
+                    "enrichment_translation": e.translation,
+                    "enrichment_sentiment": e.sentiment_score,
+                    "enrichment_intent": e.intent,
+                    "enrichment_topics": e.topics or [],
+                    "enrichment_entity_names": (
+                        [ent.name for ent in e.entities] if e.entities else []
+                    ),
+                    "enrichment_entity_types": (
+                        [ent.type for ent in e.entities] if e.entities else []
+                    ),
+                }
+            )
         return d
 
     def _write_batch(self, events: List[RedditEvent]) -> int:
@@ -167,7 +175,7 @@ class StorageConsumer:
         """Main consumer loop"""
         signal.signal(signal.SIGINT, self.shutdown)
         signal.signal(signal.SIGTERM, self.shutdown)
-        logger.info(f"Listening on: {get_kafka_input_topic(self.config)}")
+        logger.info(f"Listening on: {get_kafka_storage_input_topic(self.config)}")
 
         try:
             for message in self.consumer:

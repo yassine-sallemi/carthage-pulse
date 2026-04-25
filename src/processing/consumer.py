@@ -6,18 +6,18 @@ import signal
 from typing import List, Tuple
 from pydantic import ValidationError
 from kafka import KafkaConsumer, KafkaProducer
-from .config import (
+from src.shared_utils.config import (
     load_config,
     get_kafka_bootstrap_servers,
-    get_kafka_group_id,
-    get_kafka_input_topic,
-    get_kafka_output_topic,
+    get_kafka_processing_group_id,
+    get_kafka_processing_input_topic,
+    get_kafka_processing_output_topic,
     get_kafka_dlq_topic,
     get_llm_provider,
     get_llm_api_key,
     get_llm_model,
     get_prompt,
-    get_batch_size,
+    get_processing_batch_size,
     get_max_retries,
 )
 from .llm_service import LLMService, get_provider
@@ -33,9 +33,9 @@ class Consumer:
         self.config = load_config()
         logger.info("Initializing Consumer")
         self.consumer = KafkaConsumer(
-            get_kafka_input_topic(self.config),
+            get_kafka_processing_input_topic(self.config),
             bootstrap_servers=get_kafka_bootstrap_servers(self.config),
-            group_id=get_kafka_group_id(self.config),
+            group_id=get_kafka_processing_group_id(self.config),
             value_deserializer=lambda m: json.loads(m.decode("utf-8")),
             auto_offset_reset="earliest",
             enable_auto_commit=True,
@@ -45,9 +45,9 @@ class Consumer:
             bootstrap_servers=get_kafka_bootstrap_servers(self.config),
             value_serializer=lambda v: json.dumps(v).encode("utf-8"),
         )
-        self.output_topic = get_kafka_output_topic(self.config)
+        self.output_topic = get_kafka_processing_output_topic(self.config)
         self.dlq_topic = get_kafka_dlq_topic(self.config)
-        self.batch_size = get_batch_size(self.config)
+        self.batch_size = get_processing_batch_size(self.config)
         self.max_retries = get_max_retries(self.config)
 
         self.llm_service = LLMService(
@@ -136,7 +136,7 @@ class Consumer:
         """Main consumer loop"""
         signal.signal(signal.SIGINT, self.shutdown)
         signal.signal(signal.SIGTERM, self.shutdown)
-        logger.info(f"Listening on: {get_kafka_input_topic(self.config)}")
+        logger.info(f"Listening on: {get_kafka_processing_input_topic(self.config)}")
 
         try:
             for message in self.consumer:

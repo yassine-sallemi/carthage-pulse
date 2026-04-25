@@ -42,12 +42,27 @@ minio:
   endpoint: localhost:9000
   access_key: minioadmin
   secret_key: minioadmin
-  bucket: reddit-data
+  bucket: reddit-events
   secure: false
 
 # STORAGE SERVICE
 storage:
   batch_size: 10
+
+# SPEED LAYER
+# Tumbling window aggregation for real-time topic pulse
+speed:
+  window_seconds: 60  # Duration of each aggregation window (in seconds). Windows align to clock boundaries (e.g., at :00, :60s).
+  late_event_grace_seconds: 30  # Max age of events allowed into current window. Older events are dropped.
+  max_events_per_window: 10000  # Memory safety limit. Events beyond this are dropped to prevent OOM.
+
+# POSTGRES (Serving Layer)
+postgres:
+  host: localhost
+  port: 5432
+  user: reddit
+  password: reddit
+  database: reddit
 
 # Enrichment Prompt (DO NOT CHANGE THE INSTRUCTIONS OR EXPECTED OUTPUT SCHEMA)
 prompt: |

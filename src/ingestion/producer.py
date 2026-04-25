@@ -4,7 +4,7 @@ import json
 import logging
 from typing import Optional, List
 from kafka import KafkaProducer as KafkaProducerClient
-from .config import get_kafka_bootstrap_servers, get_kafka_topic
+from src.shared_utils.config import get_kafka_bootstrap_servers, get_kafka_topic
 from src.shared_utils import RedditEvent
 
 logger = logging.getLogger(__name__)

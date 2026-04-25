@@ -3,7 +3,7 @@
 import logging
 import requests
 from typing import Optional, List
-from .config import (
+from src.shared_utils.config import (
     load_config,
     get_subreddits,
     get_poll_interval,

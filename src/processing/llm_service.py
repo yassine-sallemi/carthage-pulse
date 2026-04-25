@@ -93,6 +93,9 @@ class OpenAIProvider(LLMProvider):
                 timeout=60,
             )
             content = response.choices[0].message.content
+            if not content:
+                logger.warning("OpenRouter returned empty content")
+                return [None] * len(texts)
             result = parse_json_response(content, len(texts))
             logger.debug(f"Processed {len(texts)} items")
             return result

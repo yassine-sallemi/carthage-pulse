@@ -4,7 +4,7 @@ import logging
 import time
 from src.ingestion.reddit_client import RedditClient
 from src.ingestion.producer import KafkaProducer
-from src.ingestion.config import load_config
+from src.shared_utils.config import load_config
 from src.shared_utils import setup_logging
 
 logger = setup_logging(logging.INFO)
