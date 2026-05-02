@@ -13,7 +13,8 @@ dependencies = [
     "minio>=7.2.20",
     "pyarrow>=14.0.0",
     "psycopg2-binary>=2.9.0",
-    "pyspark>=4.1.1",
+    "setuptools>=82.0.1",
+    "pyspark[connect]==3.5.0",
 ]
 
 [build-system]

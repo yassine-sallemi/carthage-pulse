@@ -1,0 +1,15 @@
+apiVersion: 1
+
+datasources:
+  - name: Postgres-Reddit
+    type: postgres
+    uid: postgres_reddit_001
+    url: postgres:5432
+    user: reddit
+    secureJsonData:
+      password: reddit
+    jsonData:
+      sslmode: 'disable' # Standard for local docker setups
+      postgresVersion: 1600 # Matches your PG 16 image
+      timescaledb: false
+      database: reddit

@@ -1,0 +1,5 @@
+pyspark[connect]==3.5.4
+numpy<2
+pandas
+fugue
+packaging

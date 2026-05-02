@@ -87,7 +87,8 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: admin
     user: "0"
     volumes:
-      - grafana_data:/etc/grafana/provisioning
+      - ./grafana_provisioning:/etc/grafana/provisioning
+      - grafana_data:/var/lib/grafana
     networks:
       - reddit-network
     depends_on:
@@ -97,6 +98,91 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    
+  spark-master:
+    image: mounirbs-local/spark-python3-java17:3.5.4
+    user: root
+    build:
+      context: ./
+      dockerfile: ./spark/Dockerfile
+    container_name: spark-master
+    hostname: spark-master
+    ports:
+      - "8082:8080"
+      - "7077:7077"
+    labels:
+      kompose.service.expose: true
+      kompose.service.type: clusterip
+    environment:
+      - SPARK_MASTER_HOST=spark-master
+      - SPARK_MASTER_PORT=7077
+      - SPARK_MASTER_WEBUI_PORT=8080
+      - SPARK_DAEMON_MEMORY=2g
+      - SPARK_MASTER_OPTS="-Dspark.master.rest.enabled=false"
+      - PYSPARK_PYTHON=python3
+    entrypoint:
+      - "bash"
+      - "-c"
+      - "/opt/spark/sbin/start-master.sh && tail -f /dev/null"
+    volumes:
+      - ./logs:/opt/spark/logs
+    networks:
+      - reddit-network
+
+  spark-connect:
+    image: mounirbs-local/spark-python3-java17:3.5.4
+    user: root
+    container_name: spark-connect
+    hostname: spark-connect
+    ports:
+      - "4040:4040"
+      - "15002:15002"
+    labels:
+      kompose.service.expose: true
+      kompose.service.type: clusterip
+    environment:
+      - PYSPARK_PYTHON=python3
+    depends_on:
+      - spark-master
+    volumes:
+      - ./logs:/opt/spark/logs
+      - ./data:/data:rw
+    networks:
+      - reddit-network
+    command:
+      - "bash"
+      - "-c"
+      # master: spark master endpoint
+      # deploy-mode: Whether to launch the driver program locally ("client") or on one of the worker machines inside the cluster ("cluster"). Only client is supported
+      # executor-memory: Memory per executor (e.g. 1000M, 2G) (Default: 1G)
+      # executor-core: Spark standalone, YARN and Kubernetes only. Number of cores used by each executor. (Default: 1 in YARN and K8S modes, or all available cores on the worker in standalone mode)
+      - "/opt/spark/sbin/start-connect-server.sh --master spark://spark-master:7077 --deploy-mode client --executor-memory 2G --executor-cores 1 --jars /opt/spark/jars/spark-connect_2.12-3.5.4.jar && tail -f /dev/null"
+
+  spark-worker:
+    image: mounirbs-local/spark-python3-java17:3.5.4
+    user: root
+    container_name: spark-worker
+    depends_on:
+      - spark-master
+    ports:
+      - "8081:8081"
+    labels:
+      kompose.service.expose: true
+      kompose.service.type: clusterip
+    environment:
+      - SPARK_WORKER_CORES=1
+      - SPARK_WORKER_MEMORY=2g
+      - PYSPARK_PYTHON=python3
+    entrypoint:
+      - "bash"
+      - "-c"
+      - "/opt/spark/sbin/start-worker.sh spark://spark-master:7077 && tail -f /dev/null"
+    networks:
+      - reddit-network
+    volumes:
+      - ./data:/data:rw
+      - ./logs:/opt/spark/logs
+
 
 volumes:
   kafka_data:
