@@ -67,7 +67,7 @@ services:
       POSTGRES_PASSWORD: reddit
       POSTGRES_DB: reddit
     volumes:
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
       - postgres_data:/var/lib/postgresql/data
     networks:
       - reddit-network
