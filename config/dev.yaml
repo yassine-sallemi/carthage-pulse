@@ -17,7 +17,7 @@ processing:
   batch_size: 5
   max_retries: 3
 
-# LLM Provider - options: ollama, openai, openrouter, anthropic
+# LLM Provider - options: ollama, openai, openrouter, anthropic, dummy
 llm:
   provider: openrouter
   model: meta-llama/llama-3.3-70b-instruct

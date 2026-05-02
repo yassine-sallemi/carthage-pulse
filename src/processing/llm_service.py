@@ -141,8 +141,6 @@ class OpenRouterProvider(LLMProvider):
         except Exception as e:
             logger.error(f"OpenRouter error: {type(e).__name__}")
             return [None] * len(texts)
-
-
 def get_provider(
     provider: str = "openai",
     api_key: str = "",
@@ -158,6 +156,9 @@ def get_provider(
         return OpenRouterProvider(
             api_key or os.getenv("OPENROUTER_API_KEY", ""), model, prompt
         )
+    if provider == "dummy":
+        from .dummy_provider import DummyProvider
+        return DummyProvider(api_key, model, prompt)
 
     logger.error(f"Unknown provider: {provider}")
     raise ValueError(f"Unknown provider: {provider}")
