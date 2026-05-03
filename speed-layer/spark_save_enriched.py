@@ -8,11 +8,14 @@ from pyspark.sql.types import (
     IntegerType, FloatType, ArrayType, TimestampType
 )
 
-from spark_connection import KAFKA_BROKER, KAFKA_TOPIC, SPARK_CONNECT_TARGET
-from event_json_types import event_json_schema
+from spark_connection import KAFKA_BROKER, SPARK_CONNECT_PORT, SPARK_CONNECT_HOST
+from event_json_types import enriched_event_json_schema
+
+KAFKA_TOPIC = "reddit-events-enriched"
+SPARK_CONNECT_TARGET = f"sc://{SPARK_CONNECT_HOST}:{SPARK_CONNECT_PORT}"
 
 spark_builder: Any = SparkSession.builder
-spark = spark_builder.appName("TestKafkaRedditConnect").remote(SPARK_CONNECT_TARGET).getOrCreate()
+spark = spark_builder.appName(KAFKA_TOPIC).remote(SPARK_CONNECT_TARGET).getOrCreate()
 
 print(f"Connected to Spark Connect Server at {SPARK_CONNECT_TARGET}. Reading from {KAFKA_TOPIC}...")
 
@@ -26,7 +29,7 @@ df = (
 )
 
 parsed_df = df.selectExpr("CAST(value AS STRING) AS payload") \
-              .withColumn("data", from_json(col("payload"), event_json_schema))
+              .withColumn("data", from_json(col("payload"), enriched_event_json_schema))
 
 flattened_df = parsed_df.select(
     col("data.event_id"),
@@ -81,9 +84,8 @@ def write_to_postgres(batch_df, batch_id):
 query = (
     flattened_df.writeStream
     .outputMode("append")
-    .format("console")
     .foreachBatch(write_to_postgres)
-    .option("checkpointLocation", "/tmp/spark_checkpoints") # Needed to keep track of progress
+    .option("checkpointLocation", "/data/checkpoints/spark_checkpoints_"+KAFKA_TOPIC)
     .start()
 )
 try:

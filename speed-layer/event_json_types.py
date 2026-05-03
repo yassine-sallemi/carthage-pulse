@@ -20,7 +20,7 @@ enrichment_schema = StructType([
     StructField("entities", ArrayType(entity_schema), True)
 ])
 
-event_json_schema = StructType([
+enriched_event_json_schema = StructType([
     StructField("event_id", StringType(), True),
     StructField("event_type", StringType(), True),
     StructField("posted_in_subreddit", StringType(), True),
@@ -37,4 +37,22 @@ event_json_schema = StructType([
     StructField("is_crosspost", BooleanType(), True),
     StructField("original_subreddit", StringType(), True),
     StructField("enrichment", enrichment_schema, True)
+])
+
+raw_event_json_schema = StructType([
+    StructField("event_id", StringType(), True),
+    StructField("event_type", StringType(), True),
+    StructField("posted_in_subreddit", StringType(), True),
+    StructField("author", StringType(), True),
+    StructField("url", StringType(), True),
+    StructField("title", StringType(), True),
+    StructField("content", StringType(), True),
+    StructField("timestamp", TimestampType(), True), # Spark will auto-cast ISO-8601 strings
+    StructField("has_media", BooleanType(), True),
+    StructField("media_urls", ArrayType(StringType()), True),
+    StructField("score", IntegerType(), True),
+    StructField("upvote_ratio", FloatType(), True),
+    StructField("num_comments", IntegerType(), True),
+    StructField("is_crosspost", BooleanType(), True),
+    StructField("original_subreddit", StringType(), True),
 ])

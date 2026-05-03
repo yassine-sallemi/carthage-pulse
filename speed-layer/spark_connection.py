@@ -6,7 +6,6 @@ import time
 
 
 KAFKA_BROKER = "kafka:9093"  # Internal Docker network address for Kafka.
-KAFKA_TOPIC = "reddit-events-enriched"
 SPARK_CONNECT_HOST = os.getenv("SPARK_CONNECT_HOST", "localhost")
 SPARK_CONNECT_PORT = int(os.getenv("SPARK_CONNECT_PORT", "15002"))
 SHARED_SESSION_ID = "123e4567-e89b-12d3-a456-426614174000" # this has to be a valid UUID

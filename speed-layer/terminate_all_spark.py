@@ -1,6 +1,6 @@
 import os
 from pyspark.sql import SparkSession
-from spark_connection import KAFKA_BROKER, KAFKA_TOPIC, SPARK_CONNECT_TARGET
+from spark_connection import SPARK_CONNECT_TARGET
 
 
 spark = SparkSession.builder.remote(SPARK_CONNECT_TARGET).getOrCreate()
