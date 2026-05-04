@@ -3,3 +3,4 @@ numpy<2
 pandas
 fugue
 packaging
+psycopg2-binary

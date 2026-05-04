@@ -2,7 +2,7 @@
 
 from pydantic import BaseModel, Field
 from typing import Optional, List, Literal
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 
 
@@ -105,7 +105,7 @@ class RedditEvent(BaseModel):
         """Convert Reddit API response to RedditEvent"""
         data = item.get("data", item)
         media_urls = cls._extract_media(data, event_type)
-        timestamp = datetime.fromtimestamp(data.get("created_utc", 0))
+        timestamp = datetime.fromtimestamp(data.get("created_utc", 0), tz=timezone.utc)
         return cls(
             event_id=data.get("name", data.get("id", "")),
             event_type=event_type,
