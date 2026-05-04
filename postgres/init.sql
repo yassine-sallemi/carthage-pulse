@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS enriched_events (
     sentiment_score FLOAT,
     intent VARCHAR,
     topics TEXT[],
-    entities JSONB
+    entities TEXT
 );
 
 
