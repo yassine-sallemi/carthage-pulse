@@ -208,6 +208,22 @@ def get_llm_model(config: Optional[dict] = None) -> str:
     return config.get("llm", {}).get("model", "gpt-4o-mini")
 
 
+def get_llm_azure_endpoint(config: Optional[dict] = None) -> str:
+    if config is None:
+        config = load_config()
+    return config.get("llm", {}).get("azure_endpoint", "") or os.getenv(
+        "AZURE_OPENAI_ENDPOINT", ""
+    )
+
+
+def get_llm_azure_api_version(config: Optional[dict] = None) -> str:
+    if config is None:
+        config = load_config()
+    return config.get("llm", {}).get("azure_api_version", "") or os.getenv(
+        "AZURE_OPENAI_API_VERSION", "2024-12-01-preview"
+    )
+
+
 def get_kafka_processing_group_id(config: Optional[dict] = None) -> str:
     if config is None:
         config = load_config()

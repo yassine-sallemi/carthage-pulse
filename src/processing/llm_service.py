@@ -4,7 +4,7 @@ import logging
 import os
 import signal
 from typing import Optional, List
-from openai import OpenAI
+from openai import OpenAI, AzureOpenAI
 from pydantic import BaseModel
 from src.shared_utils import RedditEvent, Enrichment
 
@@ -152,11 +152,82 @@ class OpenRouterProvider(LLMProvider):
         except Exception as e:
             logger.error(f"OpenRouter error: {type(e).__name__}")
             return [None] * len(texts)
+class AzureOpenAIProvider(LLMProvider):
+    """Azure OpenAI provider for enrichment.
+
+    `model` here is the Azure DEPLOYMENT name (e.g. "gpt-4.1"), not the OpenAI model id.
+    """
+
+    def __init__(
+        self,
+        api_key: str,
+        model: str = "gpt-4.1",
+        prompt: str = "",
+        azure_endpoint: str = "",
+        api_version: str = "2024-12-01-preview",
+    ):
+        super().__init__(api_key, model, prompt)
+        self.azure_endpoint = azure_endpoint
+        self.api_version = api_version
+        self.client = AzureOpenAI(
+            api_key=api_key,
+            azure_endpoint=azure_endpoint,
+            api_version=api_version,
+        )
+
+    def enrich(self, texts: list[str]) -> list[Optional[dict]]:
+        if not texts:
+            return []
+
+        combined = "\n\n".join(
+            [f"Item {i}:\n{text}" for i, text in enumerate(texts, 1)]
+        )
+        system_prompt = (
+            self.prompt or "Extract sentiment, entities, and topics from each text."
+        )
+        logger.debug(
+            f"Processing {len(texts)} items with Azure deployment {self.model}"
+        )
+
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {
+                        "role": "user",
+                        "content": f"Process these {len(texts)} items:\n\n" + combined,
+                    },
+                ],
+                response_format={
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "batch_enrichment_response",
+                        "schema": BatchEnrichmentResponse.model_json_schema(),
+                    },
+                },
+                max_tokens=4000,
+                timeout=60,
+            )
+            content = response.choices[0].message.content
+            if not content:
+                logger.warning("Azure OpenAI returned empty content")
+                return [None] * len(texts)
+            parsed = BatchEnrichmentResponse.model_validate_json(content)
+            logger.debug(f"Azure OpenAI: processed {len(parsed.items)} items")
+            return [item.model_dump() for item in parsed.items]
+        except Exception as e:
+            logger.warning(f"Azure OpenAI error: {type(e).__name__}: {e}")
+            return [None] * len(texts)
+
+
 def get_provider(
     provider: str = "openai",
     api_key: str = "",
     model: str = "gpt-4o-mini",
     prompt: str = "",
+    azure_endpoint: str = "",
+    azure_api_version: str = "",
 ) -> LLMProvider:
     """Factory function to create LLM provider instances"""
     logger.debug(f"Initializing provider: {provider}")
@@ -166,6 +237,15 @@ def get_provider(
     if provider == "openrouter":
         return OpenRouterProvider(
             api_key or os.getenv("OPENROUTER_API_KEY", ""), model, prompt
+        )
+    if provider == "azure_openai":
+        return AzureOpenAIProvider(
+            api_key=api_key or os.getenv("AZURE_OPENAI_API_KEY", ""),
+            model=model or os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4.1"),
+            prompt=prompt,
+            azure_endpoint=azure_endpoint or os.getenv("AZURE_OPENAI_ENDPOINT", ""),
+            api_version=azure_api_version
+            or os.getenv("AZURE_OPENAI_API_VERSION", "2024-12-01-preview"),
         )
     if provider == "dummy":
         from .dummy_provider import DummyProvider
