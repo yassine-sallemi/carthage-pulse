@@ -17,11 +17,14 @@ processing:
   batch_size: 5
   max_retries: 3
 
-# LLM Provider - options: ollama, openai, openrouter, anthropic, dummy
+# LLM Provider - options: openai, openrouter, azure_openai, dummy
 llm:
-  provider: openrouter
-  model: meta-llama/llama-3.3-70b-instruct
-  api_key: ${OPENROUTER_API_KEY} # Reads from .env or environment
+  provider: azure_openai
+  model: ${AZURE_OPENAI_DEPLOYMENT:-gpt-4.1}  # Azure deployment name (NOT openai model id) when provider=azure_openai
+  api_key: ${AZURE_OPENAI_API_KEY}
+  # Azure OpenAI - only used when provider: azure_openai
+  azure_endpoint: ${AZURE_OPENAI_ENDPOINT}
+  azure_api_version: ${AZURE_OPENAI_API_VERSION:-2024-12-01-preview}
 
 # Kafka Settings
 kafka:

@@ -17,6 +17,8 @@ from src.shared_utils.config import (
     get_llm_provider,
     get_llm_api_key,
     get_llm_model,
+    get_llm_azure_endpoint,
+    get_llm_azure_api_version,
     get_prompt,
     get_processing_batch_size,
     get_max_retries,
@@ -65,6 +67,8 @@ class Consumer:
                 get_llm_api_key(self.config),
                 get_llm_model(self.config),
                 get_prompt(self.config),
+                azure_endpoint=get_llm_azure_endpoint(self.config),
+                azure_api_version=get_llm_azure_api_version(self.config),
             )
         )
         logger.info(
